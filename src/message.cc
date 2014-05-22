@@ -184,6 +184,14 @@ v8::Handle<v8::Object> Message::NewInstance (
       instance->Set(NanSymbol("ptyHeight"),
           v8::Integer::New(ssh_message_channel_request_pty_height(message)));
     }
+  } else if (type == SSH_REQUEST_GLOBAL) {
+    if (subtype == SSH_GLOBAL_REQUEST_TCPIP_FORWARD) {
+      const char *requestAddress = ssh_message_global_request_address(message);
+      if (requestAddress)
+        instance->Set(NanSymbol("requestAddress"), v8::String::New(requestAddress));
+      instance->Set(NanSymbol("requestPort"),
+          v8::Integer::New(ssh_message_global_request_port(message)));
+    }
   }
 
   return scope.Close(instance);

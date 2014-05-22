@@ -54,6 +54,22 @@ void Session::OnNewChannel (v8::Handle<v8::Object> channel) {
   }
 }
 
+void Session::OnGlobalRequest (v8::Handle<v8::Object> message) {
+  NanScope();
+
+  v8::Local<v8::Value> callback = NanObjectWrapHandle(this)
+      ->Get(NanSymbol("onGlobalRequest"));
+
+  if (callback->IsFunction()) {
+    v8::TryCatch try_catch;
+    v8::Handle<v8::Value> argv[] = { message };
+    callback.As<v8::Function>()->Call(NanObjectWrapHandle(this), 1, argv);
+
+    if (try_catch.HasCaught())
+      node::FatalException(try_catch);
+  }
+}
+
 void Session::ChannelClosedCallback (Channel *channel, void *userData) {
   Session* s = static_cast<Session*>(userData);
 
@@ -221,57 +237,93 @@ void Session::SetAuthMethods (int methods) {
     std::cout << "Changed auth methods to " << methods << "\n";
 }
 
+ssh_channel Session::OpenReverseForward(const char *remotehost, int remoteport,
+    const char *sourcehost, int localport) {
+
+  if (NSSH_DEBUG)
+    std::cout << "ssh_channel_open_reverse_forward" << std::endl;
+
+  ssh_channel chan;
+  int rc;
+
+  chan = ssh_channel_new(session);
+  if (chan == NULL) {
+    return NULL;
+  }
+
+  if (sourcehost == NULL) sourcehost = "";
+
+  // TODO: make this asynchronous?
+  do {
+    rc = ssh_channel_open_reverse_forward(chan, remotehost, remoteport, sourcehost, localport);
+  } while (rc == SSH_AGAIN);
+
+  if (rc < 0) {
+    ssh_channel_free(chan);
+    chan = NULL;
+  }
+
+  return chan;
+}
+
 // a client callback (I think)
-int SessionAuthCallback (const char *prompt, char *buf, size_t len,
+int Session::AuthCallback (const char *prompt, char *buf, size_t len,
     int echo, int verify, void *userdata) {
 
   if (NSSH_DEBUG)
-    std::cout << "SessionAuthCallback\n";
+    std::cout << "Session::AuthCallback! " << std::endl;
   return 0;
 }
 
-void SessionLogCallback (ssh_session session, int priority,
+void Session::LogCallback (ssh_session session, int priority,
     const char *message, void *userdata) {
 
   if (NSSH_DEBUG)
-    std::cout << "SessionLogCallback " << priority << message
+    std::cout << "Session::LogCallback! " << priority << ", " << message
       << std::endl;
 }
 
 // not sure if this gets used
-void SessionGlobalRequestCallback (ssh_session session, ssh_message message,
-    void *userdata) {
+void Session::GlobalRequestCallback (ssh_session session, ssh_message message,
+    void *userData) {
+
+  int type = ssh_message_type(message);
+  int subtype = ssh_message_subtype(message);
 
   if (NSSH_DEBUG)
-    std::cout << "SessionGlobalRequestCallback!\n";
+    std::cout << "Session::GlobalRequestCallback! " << type << ", " << subtype << std::endl;
+
+  Session* s = static_cast<Session*>(userData);
+  if (type == SSH_REQUEST_GLOBAL) {
+    s->OnGlobalRequest(Message::NewInstance(s->session, NULL, message));
+  }
 }
 
 // not used as far as I can tell
-int Session::SessionMessageCallback (ssh_session session, ssh_message message, void *data) {
+int Session::MessageCallback (ssh_session session, ssh_message message, void *data) {
   if (NSSH_DEBUG)
-    std::cout << "SessionMessageCallback!\n";
+    std::cout << "Session::MessageCallback! " << std::endl;
 
   return 1;
 }
 
-void SessionStatusCallback (void *userdata, float status) {
+void Session::StatusCallback (void *userdata, float status) {
   if (NSSH_DEBUG)
-    std::cout << "SessionStatusCallback: " << status << std::endl;
+    std::cout << "Session::StatusCallback! " << status << std::endl;
 }
 
 
 void Session::Start () {
-  /*
+
   callbacks = new ssh_callbacks_struct;
-  callbacks->auth_function = SessionAuthCallback;
-  callbacks->log_function = SessionLogCallback;
-  callbacks->global_request_function = SessionGlobalRequestCallback;
-  callbacks->connect_status_function = SessionStatusCallback;
+  callbacks->auth_function = NULL; // Session::AuthCallback;
+  callbacks->log_function = NULL; // Session::LogCallback;
+  callbacks->global_request_function = Session::GlobalRequestCallback;
+  callbacks->connect_status_function = NULL; // Session::StatusCallback;
   callbacks->userdata = this;
   ssh_callbacks_init(callbacks);
   ssh_set_callbacks(session, callbacks);
-  ssh_set_message_callback(session, SessionMessageCallback, this);
-  */
+  // ssh_set_message_callback(session, Session::MessageCallback, this);
 
   ssh_options_set(session, SSH_OPTIONS_TIMEOUT, "0");
   ssh_options_set(session, SSH_OPTIONS_TIMEOUT_USEC, "1");
@@ -303,6 +355,8 @@ void Session::Init () {
   tpl->SetClassName(NanSymbol("Session"));
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
   NODE_SET_PROTOTYPE_METHOD(tpl, "close", Close);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "setAuthMethods", SetAuthMethods);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "openReverseForward", OpenReverseForward);
 }
 
 v8::Handle<v8::Object> Session::NewInstance (ssh_session session) {
@@ -352,6 +406,44 @@ NAN_METHOD(Session::SetAuthMethods) {
   s->SetAuthMethods(args[0]->Int32Value());
 
   NanReturnUndefined();
+}
+
+NAN_METHOD(Session::OpenReverseForward) {
+  NanScope();
+
+  char *remotehost = NULL, *sourcehost = NULL;
+  int remoteport = 0, localport = 0;
+
+  if (args.Length() >= 1 && args[0]->IsString()) remotehost = NanFromV8String(args[0]);
+  if (args.Length() >= 2 && args[1]->IsNumber()) remoteport = args[1]->Int32Value();
+  if (args.Length() >= 3 && args[2]->IsString()) sourcehost = NanFromV8String(args[2]);
+  if (args.Length() >= 4 && args[3]->IsNumber()) localport = args[3]->Int32Value();
+
+  Session *s = ObjectWrap::Unwrap<Session>(args.This());
+
+  ssh_message message = ssh_message_get(s->session);
+
+  if (NSSH_DEBUG)
+    std::cout << "message loop " << (!message) << " status=" << ssh_get_status(s->session) << std::endl;
+
+  ssh_channel chan = s->OpenReverseForward(remotehost, remoteport, sourcehost, localport);
+  if (!chan) {
+    NanReturnNull();
+  }
+
+  v8::Handle<v8::Object> channel = Channel::NewInstance(
+      s->session
+    , chan
+    , ChannelClosedCallback
+    , s
+  );
+
+  s->channels.push_back(node::ObjectWrap::Unwrap<Channel>(channel));
+  if (NSSH_DEBUG)
+    std::cout << "OpenReverseForward channel" << node::ObjectWrap::Unwrap<Channel>(channel)->myid << std::endl;
+  s->OnNewChannel(channel);
+
+  NanReturnValue(channel);
 }
 
 } // namespace nssh

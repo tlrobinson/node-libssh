@@ -29,14 +29,21 @@ class Session : public node::ObjectWrap {
   void Start ();
   void Close ();
   void SetAuthMethods (int methods);
+  ssh_channel OpenReverseForward (const char *remotehost, int remoteport, const char *sourcehost, int localport);
+
   void OnMessage (v8::Handle<v8::Object> message);
   void OnNewChannel (v8::Handle<v8::Object> channel);
   void OnError (std::string error);
+  void OnGlobalRequest (v8::Handle<v8::Object> message);
 
  private:
   static void SocketPollCallback (uv_poll_t* handle, int status, int events);
   static void ChannelClosedCallback (Channel *channel, void *user);
-  static int SessionMessageCallback (ssh_session session, ssh_message message, void *data);
+  static int MessageCallback (ssh_session session, ssh_message message, void *data);
+  static int AuthCallback (const char *prompt, char *buf, size_t len, int echo, int verify, void *userdata);
+  static void LogCallback (ssh_session session, int priority, const char *message, void *userdata);
+  static void GlobalRequestCallback (ssh_session session, ssh_message message, void *userData);
+  static void StatusCallback (void *userdata, float status);
 
   ssh_session session;
   uv_poll_t *poll_handle;
@@ -49,6 +56,7 @@ class Session : public node::ObjectWrap {
   static NAN_METHOD(New);
   static NAN_METHOD(Close);
   static NAN_METHOD(SetAuthMethods);
+  static NAN_METHOD(OpenReverseForward);
 };
 
 } // namespace nssh
