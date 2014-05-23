@@ -169,6 +169,8 @@ bool Channel::TryRead () {
 
   int len;
   do {
+    if (closed)
+      break;
     char buf[1024];
     len = ssh_channel_read_nonblocking(channel, buf, sizeof(buf), 0);
     if (len > 0) {
