@@ -35,6 +35,7 @@ class Session : public node::ObjectWrap {
   void OnNewChannel (v8::Handle<v8::Object> channel);
   void OnError (std::string error);
   void OnGlobalRequest (v8::Handle<v8::Object> message);
+  void OnClose ();
 
  private:
   static void SocketPollCallback (uv_poll_t* handle, int status, int events);

@@ -70,6 +70,22 @@ void Session::OnGlobalRequest (v8::Handle<v8::Object> message) {
   }
 }
 
+void Session::OnClose () {
+  NanScope();
+
+  v8::Local<v8::Value> callback = NanObjectWrapHandle(this)
+      ->Get(NanSymbol("onClose"));
+
+  if (callback->IsFunction()) {
+    v8::TryCatch try_catch;
+    v8::Handle<v8::Value> argv[] = { };
+    callback.As<v8::Function>()->Call(NanObjectWrapHandle(this), 0, argv);
+
+    if (try_catch.HasCaught())
+      node::FatalException(try_catch);
+  }
+}
+
 void Session::ChannelClosedCallback (Channel *channel, void *userData) {
   Session* s = static_cast<Session*>(userData);
 
@@ -229,6 +245,8 @@ void Session::Close () {
   //ssh_disconnect(session);
   if (NSSH_DEBUG)
     std::cout << "Stopped polling session, " << channels.size() << " channels open\n";
+
+  OnClose();
 }
 
 void Session::SetAuthMethods (int methods) {
