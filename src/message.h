@@ -39,6 +39,7 @@ class Message : public node::ObjectWrap {
   static NAN_METHOD(ReplyDefault);
   static NAN_METHOD(ReplyAuthSuccess);
   static NAN_METHOD(ReplySuccess);
+  static NAN_METHOD(ReplyGlobalMessageSuccess);
   static NAN_METHOD(ComparePublicKey);
   static NAN_METHOD(ScpAccept);
   static NAN_METHOD(SftpAccept);

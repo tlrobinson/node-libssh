@@ -108,6 +108,7 @@ void Message::Init () {
   NODE_SET_PROTOTYPE_METHOD(tpl, "replyDefault", ReplyDefault);
   NODE_SET_PROTOTYPE_METHOD(tpl, "replyAuthSuccess", ReplyAuthSuccess);
   NODE_SET_PROTOTYPE_METHOD(tpl, "replySuccess", ReplySuccess);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "replyGlobalMessageSuccess", ReplyGlobalMessageSuccess);
   NODE_SET_PROTOTYPE_METHOD(tpl, "comparePublicKey", ComparePublicKey);
   NODE_SET_PROTOTYPE_METHOD(tpl, "scpAccept", ScpAccept);
   NODE_SET_PROTOTYPE_METHOD(tpl, "sftpAccept", SftpAccept);
@@ -235,6 +236,19 @@ NAN_METHOD(Message::ReplyAuthSuccess) {
   //TODO: async
   Message* m = node::ObjectWrap::Unwrap<Message>(args.This());
   ssh_message_auth_reply_success(m->message, 0);
+
+  NanReturnUndefined();
+}
+
+NAN_METHOD(Message::ReplyGlobalMessageSuccess) {
+  NanScope();
+
+  //TODO: async
+  Message* m = node::ObjectWrap::Unwrap<Message>(args.This());
+
+  int port = 0;
+  if (args.Length() >= 1 && args[0]->IsNumber()) port = args[0]->Int32Value();
+  ssh_message_global_request_reply_success(m->message, port);
 
   NanReturnUndefined();
 }

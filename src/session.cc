@@ -8,6 +8,7 @@
 #include <libssh/keys.h>
 #include <libssh/socket.h>
 #include <libssh/poll.h>
+#include <libssh/messages.h>
 #include <string.h>
 #include "session.h"
 #include "message.h"
